@@ -1,0 +1,301 @@
+import flixel.FlxG;
+import flixel.util.FlxStringUtil;
+import funkin.Conductor;
+import funkin.Paths;
+import funkin.play.PlayState;
+import funkin.modding.module.Module;
+import flixel.text.FlxText;
+import flixel.text.FlxTextBorderStyle;
+import funkin.play.character.BaseCharacter;
+import flixel.FlxSprite;
+import funkin.graphics.FunkinSprite;
+import flixel.math.FlxPoint;
+
+class AnimationDebugModule extends Module
+{
+    function new(){
+        super("AnimationDebug");
+    }
+
+    var shit:FlxText;
+    var piss:FlxText;
+    var animSelected:Int = 0;
+    var charSelected:Int = 0;
+    var freeze:Bool = false; 
+    var pause:Bool = false;
+    var allowed:Bool = true;
+
+    var bf:BaseCharacter;
+    var bfList:Array<String> = [];
+
+    var gf:BaseCharacter;
+    var gfList:Array<String> = [];
+
+    var dad:BaseCharacter;
+    var dadList:Array<String> = [];
+
+    var characters:Array<BaseCharacter> = [];
+    //var animations:Array<String> = ["singLEFT","singDOWN","singUP","singRIGHT","idle","danceLeft","danceRight"];
+    //var suffixes:Array<String> = ["","miss","-hold","-alt","-alt-hold"];
+    var curCharAnim;
+
+    var onionBf:FunkinSprite;
+    var onionDad:FunkinSprite;
+    var onionGf:FunkinSprite;
+
+    var onionArray:Array<String> = [];
+
+    var dialogueWow:Array<String> = [
+        "LEFT / RIGHT for selecting the animation, UP / DOWN for selecting the character.",
+        "Z / SPACE for playing animation, X / ALT for the idle animation.",
+        "hold A and press the arrow keybinds to play the poses.",
+        "Hold S for the miss poses, or Q for the alt poses.",
+        "Hold X while pressing LEFT / RIGHT to play the dance animations.",
+        "C / TAB for freezing the game.",
+        "IJKL for changing the offsets by 5 (SHIFT for 10 and CONTROL for 1).",
+        "Mouse wheel for changing the onion skin's alpha.",
+        "hold SHIFT and press Z / SPACE to select the animation for the onion skin.",
+        "1 to toggle this message."
+    ];
+
+    override function onStateChangeEnd(event){
+        super.onStateChangeEnd(event);
+        if (FlxG.state != PlayState.instance) return;
+
+        shit = new FlxText(0, 0, 0, "feces", 16).setBorderStyle(FlxTextBorderStyle.OUTLINE, 0xFF000000);
+        //shit.borderSize = 2;
+        shit.cameras = [PlayState.instance.camCutscene];
+        PlayState.instance.add(shit);
+
+        piss = new FlxText(0, 0, 0, "", 16).setBorderStyle(FlxTextBorderStyle.OUTLINE, 0xFF000000);
+        for (i in 0...dialogueWow.length) piss.text += "> " + dialogueWow[i] + "\n";
+        piss.cameras = [PlayState.instance.camCutscene];
+        piss.y = FlxG.height - piss.height;
+        PlayState.instance.add(piss);
+
+        bf = PlayState.instance.currentStage.getBoyfriend();
+        dad = PlayState.instance.currentStage.getDad();
+        gf = PlayState.instance.currentStage.getGirlfriend();
+
+        characters = [];
+
+        animSelected = 0;
+        charSelected = 0;
+
+        allowed = false;
+        freeze = false;
+        pause = false;
+
+        if (bf != null){
+            bfList = bf.animation.getNameList();
+            characters.push(bf);
+        }
+
+        if (dad != null){
+            dadList = dad.animation.getNameList();
+            characters.push(dad);
+        }
+
+        if (gf != null){
+            gfList = gf.animation.getNameList();
+            characters.push(gf);
+        }
+
+        for (i in 0...onionArray.length) {
+            if (onionArray[i] != null) onionArray[i].destroy();
+        }
+
+        onionArray = [];
+
+        if (bf != null) onionSkinUpdate(onionBf, bf, true);
+        if (dad != null) onionSkinUpdate(onionDad, dad, true);
+        if (gf != null) onionSkinUpdate(onionGf, gf, true);
+
+        for (i in 0...characters.length) {
+            onionArray[i].alpha = 0.5;
+            onionArray[i].zIndex = characters[i].zIndex - 1;
+        }
+
+        PlayState.instance.currentStage.refresh();
+    }
+
+    function onionSkinUpdate(onionSkin, char, add:Bool){
+        if (add) onionSkin = new FlxSprite(0, 0);
+        onionSkin.loadGraphicFromSprite(char);
+        onionSkin.frame = char.frame;
+        onionSkin.flipX = char.flipX;
+        onionSkin.scale = char.scale;
+        onionSkin.angle = char.angle;
+        onionSkin.updateHitbox();
+        //onionSkin.origin.set(0, 0);
+
+        onionSkin.x = char.x + char.origin.x * (char.scale.x - 1) - char.globalOffsets[0];
+        onionSkin.y = char.y + char.origin.y * (char.scale.y - 1) - char.globalOffsets[1];
+
+        onionSkin.offset.x = char.animOffsets[0];
+        onionSkin.offset.y = char.animOffsets[1];
+
+        if (add) {
+            PlayState.instance.currentStage.add(onionSkin);
+            onionArray.push(onionSkin);
+        }
+    }
+
+    var messageToggle:Bool = true;
+
+    function selecting(){
+        if ((FlxG.keys.justPressed.C || FlxG.keys.justPressed.TAB) && allowed) {
+            freeze = !freeze;
+            freezed(freeze);
+        }
+
+        if (!allowed || !freeze) return;
+
+        var A:Bool = FlxG.keys.pressed.A;
+        var S:Bool = FlxG.keys.pressed.S;
+        var Q:Bool = FlxG.keys.pressed.Q;
+        var X:Bool = FlxG.keys.pressed.X;
+
+        if (!A && !S && !Q && !X) {
+            if (FlxG.keys.justPressed.LEFT) {
+                animSelected--;
+                if (animSelected < 0) animSelected = curCharAnim.length - 1;
+            }
+            if (FlxG.keys.justPressed.RIGHT) {
+                animSelected++;
+                if (animSelected > curCharAnim.length - 1) animSelected = 0;
+            }
+            if (FlxG.keys.justPressed.UP) {
+                charSelected++;
+                if (charSelected > characters.length - 1) charSelected = 0;
+            }
+            if (FlxG.keys.justPressed.DOWN) {
+                charSelected--;
+                if (charSelected < 0) charSelected = characters.length - 1;
+            }
+        }
+
+        if ((FlxG.keys.pressed.X || FlxG.keys.pressed.ALT) && FlxG.keys.justPressed.LEFT) characters[charSelected].playAnimation("danceLeft", true);
+        if ((FlxG.keys.pressed.X || FlxG.keys.pressed.ALT) && FlxG.keys.justPressed.RIGHT) characters[charSelected].playAnimation("danceRight", true);
+
+        if (FlxG.keys.justPressed.Z || FlxG.keys.justPressed.SPACE && !A && !S && !Q && !X) {
+            characters[charSelected].playAnimation(curCharAnim[animSelected], true);
+        }
+        if (FlxG.keys.justPressed.X || FlxG.keys.justPressed.ALT && !A && !S && !Q && !X) {
+            characters[charSelected].playAnimation("idle", true);
+        }
+
+        var amount:Int = FlxG.keys.pressed.SHIFT? 10 : FlxG.keys.pressed.CONTROL? 1 : 5;
+
+        if (FlxG.keys.justPressed.J) characters[charSelected].animOffsets[0] += amount;
+        if (FlxG.keys.justPressed.L) characters[charSelected].animOffsets[0] -= amount;
+        if (FlxG.keys.justPressed.I) characters[charSelected].animOffsets[1] += amount;
+        if (FlxG.keys.justPressed.K) characters[charSelected].animOffsets[1] -= amount;
+
+        for (i in 0...onionArray.length) {
+            if (FlxG.mouse.wheel != 0 && !(onionArray[i].alpha < 0) && !(onionArray[i].alpha > 1)) onionArray[i].alpha += 0.05 * FlxG.mouse.wheel;
+        }
+
+        if (FlxG.keys.pressed.SHIFT && (FlxG.keys.justPressed.Z || FlxG.keys.justPressed.SPACE)) 
+            onionSkinUpdate(onionArray[charSelected],characters[charSelected],false);
+
+        if (FlxG.keys.justPressed.ONE) messageToggle = !messageToggle;
+        piss.alpha = messageToggle? 1 : 0;
+    }
+
+    override function onNoteGhostMiss(event) {
+        super.onNoteGhostMiss(event);
+        if (PlayState.instance == null || freeze == false) return;
+        if (!allowed) return;
+        event.cancel();
+        event.stopPropagation();
+        if (FlxG.keys.pressed.A) characters[charSelected].playSingAnimation(event.dir, false);
+        if (FlxG.keys.pressed.S) characters[charSelected].playSingAnimation(event.dir, true);
+        if (FlxG.keys.pressed.Q) characters[charSelected].playSingAnimation(event.dir, false, "alt");
+        characters[charSelected].holdTimer = 0;
+    }
+
+    override function onUpdate(elapsed){
+        super.onUpdate(elapsed);
+        if (PlayState.instance == null || PlayState.instance.currentStage == null || pause) return;
+        
+        switch charSelected{
+            case 0: if (bf != null) curCharAnim = bfList;
+            case 1: if (dad != null) curCharAnim = dadList;
+            case 2: if (gf != null) curCharAnim = gfList;
+        }
+
+        if (animSelected > (curCharAnim.length - 1)) animSelected = (curCharAnim.length - 1);
+        if (animSelected < 0) animSelected = 0;
+
+        var animArrays:String = curCharAnim[animSelected] + " - " + animSelected + " / " + (curCharAnim.length - 1);
+        var animoffsets:String = "X: " + characters[charSelected].animOffsets[0] + " - Y: " + characters[charSelected].animOffsets[1];
+        //var animoffsets:String = onionArray[charSelected].origin + " " + characters[charSelected].origin;
+
+        shit.text = "Target: " + characters[charSelected].characterName + " | " + animoffsets + " | " + animArrays;
+        shit.screenCenter(0x01);
+
+        var camHUD:Array<String> = 
+        [
+            PlayState.instance.healthBar,
+            PlayState.instance.healthBarBG,
+            PlayState.instance.iconP1,
+            PlayState.instance.iconP2,
+            PlayState.instance.scoreText,
+            PlayState.instance.opponentStrumline
+        ];
+
+        shit.visible = piss.visible = freeze;
+        for (i in 0...camHUD.length) camHUD[i].visible = !freeze;
+        for (i in 0...onionArray.length) onionArray[i].visible = freeze;
+
+        if ((freeze && (FlxG.keys.pressed.A || FlxG.keys.pressed.S || FlxG.keys.pressed.Q)) || !freeze) PlayState.instance.playerStrumline.visible = true;
+        else if (freeze) PlayState.instance.playerStrumline.visible = false;
+
+        selecting();
+
+        if (freeze) {
+        PlayState.instance.resetCamera(false, false, false);
+        PlayState.instance.cancelCameraFollowTween();
+        PlayState.instance.cameraFollowPoint.setPosition(characters[charSelected].cameraFocusPoint.x, characters[charSelected].cameraFocusPoint.y);
+        }
+    }
+
+    function freezed(bool:Bool){
+        if (FlxG.sound.music == null) return;
+        switch (bool){
+            case true:
+			if (FlxG.sound.music.playing) {
+				FlxG.sound.music.pause();
+				PlayState.instance.musicPausedBySubState = true;
+			}
+			if (PlayState.instance.vocals != null) PlayState.instance.vocals.pause();
+            case false:
+			FlxG.sound.music.resume();
+            PlayState.instance.vocals.resume();
+			PlayState.instance.musicPausedBySubState = false;
+        }
+    }
+
+    override function onSongLoaded(){
+        super.onSongLoaded();
+        allowed = false;
+    }
+
+    override function onSongStart(){
+        super.onSongStart();
+        allowed = true;
+    }
+
+    override function onResume(){
+        super.onResume();
+        freeze = false;
+        pause = false;
+    }
+
+    override function onPause(){
+        super.onPause();
+        freeze = false;
+        pause = true;
+    }
+}
