@@ -1,20 +1,23 @@
 import flixel.FlxG;
+import flixel.FlxSprite;
 import flixel.util.FlxStringUtil;
+import flixel.math.FlxPoint;
+import flixel.text.FlxText;
+import flixel.text.FlxTextBorderStyle;
 import funkin.Conductor;
 import funkin.Paths;
 import funkin.play.PlayState;
 import funkin.modding.module.Module;
-import flixel.text.FlxText;
-import flixel.text.FlxTextBorderStyle;
 import funkin.play.character.BaseCharacter;
-import flixel.FlxSprite;
 import funkin.graphics.FunkinSprite;
-import flixel.math.FlxPoint;
+import funkin.modding.PolymodHandler;
+import funkin.util.FileUtil;
+import funkin.audio.FunkinSound;
 
 class AnimationDebugModule extends Module
 {
     function new(){
-        super("AnimationDebug");
+        super("AnimationDebug", 1, {state: PlayState});
     }
 
     var shit:FlxText;
@@ -23,21 +26,19 @@ class AnimationDebugModule extends Module
     var charSelected:Int = 0;
     var freeze:Bool = false; 
     var pause:Bool = false;
-    var allowed:Bool = true;
+    var allowed:Bool = false;
 
     var bf:BaseCharacter;
-    var bfList:Array<String> = [];
-
+    var dad:BaseCharacter;
     var gf:BaseCharacter;
+
+    var bfList:Array<String> = [];
+    var dadList:Array<String> = [];
     var gfList:Array<String> = [];
 
-    var dad:BaseCharacter;
-    var dadList:Array<String> = [];
-
     var characters:Array<BaseCharacter> = [];
-    //var animations:Array<String> = ["singLEFT","singDOWN","singUP","singRIGHT","idle","danceLeft","danceRight"];
-    //var suffixes:Array<String> = ["","miss","-hold","-alt","-alt-hold"];
-    var curCharAnim;
+    var curCharList;
+    var animDefs:Array<String> = ["singLEFT","singDOWN","singUP","singRIGHT"];
 
     var onionBf:FunkinSprite;
     var onionDad:FunkinSprite;
@@ -55,15 +56,32 @@ class AnimationDebugModule extends Module
         "IJKL for changing the offsets by 5 (SHIFT for 10 and CONTROL for 1).",
         "Mouse wheel for changing the onion skin's alpha.",
         "hold SHIFT and press Z / SPACE to select the animation for the onion skin.",
+        "Hold CONTROL and S to save your character's offsets.",
         "1 to toggle this message."
     ];
 
-    override function onStateChangeEnd(event){
-        super.onStateChangeEnd(event);
-        if (FlxG.state != PlayState.instance) return;
+    var pressed;
+    var justPressed;
 
+    var loaded:Bool = false;
+    var messageToggle:Bool = true;
+
+    var camHUD:Array<String> = [];
+    var savedTxt:String;
+
+    override function onStateChangeBegin(event) {
+        super.onStateChangeBegin(event);
+        cleanup();
+    }
+
+    override function onStateChangeEnd(event) {
+        super.onStateChangeEnd(event);
+        initDebug(); 
+    }
+
+    function initDebug(){
         shit = new FlxText(0, 0, 0, "feces", 16).setBorderStyle(FlxTextBorderStyle.OUTLINE, 0xFF000000);
-        //shit.borderSize = 2;
+        shit.alignment = "center";
         shit.cameras = [PlayState.instance.camCutscene];
         PlayState.instance.add(shit);
 
@@ -72,6 +90,8 @@ class AnimationDebugModule extends Module
         piss.cameras = [PlayState.instance.camCutscene];
         piss.y = FlxG.height - piss.height;
         PlayState.instance.add(piss);
+
+        shit.visible = piss.visible = false;
 
         bf = PlayState.instance.currentStage.getBoyfriend();
         dad = PlayState.instance.currentStage.getDad();
@@ -101,25 +121,33 @@ class AnimationDebugModule extends Module
             characters.push(gf);
         }
 
-        for (i in 0...onionArray.length) {
-            if (onionArray[i] != null) onionArray[i].destroy();
-        }
-
         onionArray = [];
 
-        if (bf != null) onionSkinUpdate(onionBf, bf, true);
-        if (dad != null) onionSkinUpdate(onionDad, dad, true);
-        if (gf != null) onionSkinUpdate(onionGf, gf, true);
+        if (bf != null && onionBf == null) onionSkinUpdate(onionBf, bf, true);
+        if (dad != null && onionDad == null) onionSkinUpdate(onionDad, dad, true);
+        if (gf != null && onionGf == null) onionSkinUpdate(onionGf, gf, true);
 
         for (i in 0...characters.length) {
             onionArray[i].alpha = 0.5;
             onionArray[i].zIndex = characters[i].zIndex - 1;
         }
 
+        camHUD = [
+            PlayState.instance.healthBar,
+            PlayState.instance.healthBarBG,
+            PlayState.instance.scoreText,
+            PlayState.instance.iconP1,
+            PlayState.instance.iconP2,
+            PlayState.instance.opponentStrumline,
+        ];
+
         PlayState.instance.currentStage.refresh();
+        savedTxt = "";
+
+        loaded = true;
     }
 
-    function onionSkinUpdate(onionSkin, char, add:Bool){
+    function onionSkinUpdate(onionSkin:FunkinSprite, char:BaseCharacter, add:Bool){
         if (add) onionSkin = new FlxSprite(0, 0);
         onionSkin.loadGraphicFromSprite(char);
         onionSkin.frame = char.frame;
@@ -127,10 +155,9 @@ class AnimationDebugModule extends Module
         onionSkin.scale = char.scale;
         onionSkin.angle = char.angle;
         onionSkin.updateHitbox();
-        //onionSkin.origin.set(0, 0);
 
-        onionSkin.x = char.x + char.origin.x * (char.scale.x - 1) - char.globalOffsets[0];
-        onionSkin.y = char.y + char.origin.y * (char.scale.y - 1) - char.globalOffsets[1];
+        onionSkin.x = char.x + char.origin.x * (char.scale.x - 1) + char.globalOffsets[0];
+        onionSkin.y = char.y + char.origin.y * (char.scale.y - 1) + char.globalOffsets[1];
 
         onionSkin.offset.x = char.animOffsets[0];
         onionSkin.offset.y = char.animOffsets[1];
@@ -141,116 +168,170 @@ class AnimationDebugModule extends Module
         }
     }
 
-    var messageToggle:Bool = true;
+    function animPlay(char:BaseCharacter, anim:String){
+        char.playAnimation(anim, true);
+        char.holdTimer = 0;
+        animSelected = curCharList.indexOf(anim);
+    }
 
     function selecting(){
-        if ((FlxG.keys.justPressed.C || FlxG.keys.justPressed.TAB) && allowed) {
+        if ((justPressed.C || justPressed.TAB) && allowed && !pause) {
             freeze = !freeze;
             freezed(freeze);
         }
 
         if (!allowed || !freeze) return;
 
-        var A:Bool = FlxG.keys.pressed.A;
-        var S:Bool = FlxG.keys.pressed.S;
-        var Q:Bool = FlxG.keys.pressed.Q;
-        var X:Bool = FlxG.keys.pressed.X;
+        var amount:Int = pressed.SHIFT? 10 : pressed.CONTROL? 1 : 5;
 
-        if (!A && !S && !Q && !X) {
-            if (FlxG.keys.justPressed.LEFT) {
+        if (!(
+            (pressed.A && doesContain(curCharList, animDefs)) || 
+            (pressed.S && doesContain(curCharList, animDefs, "miss")) || 
+            (pressed.Q && doesContain(curCharList, animDefs, "-alt"))
+            )) {
+            if (justPressed.LEFT) {
                 animSelected--;
-                if (animSelected < 0) animSelected = curCharAnim.length - 1;
+                if (animSelected < 0) animSelected = curCharList.length - 1;
             }
-            if (FlxG.keys.justPressed.RIGHT) {
+            if (justPressed.RIGHT) {
                 animSelected++;
-                if (animSelected > curCharAnim.length - 1) animSelected = 0;
+                if (animSelected > curCharList.length - 1) animSelected = 0;
             }
-            if (FlxG.keys.justPressed.UP) {
+            if (justPressed.UP) {
                 charSelected++;
                 if (charSelected > characters.length - 1) charSelected = 0;
             }
-            if (FlxG.keys.justPressed.DOWN) {
+            if (justPressed.DOWN) {
                 charSelected--;
                 if (charSelected < 0) charSelected = characters.length - 1;
             }
+
+            if (justPressed.Z || justPressed.SPACE) 
+                animPlay(characters[charSelected], curCharList[animSelected]);
+            if ((justPressed.X || justPressed.ALT) && curCharList.contains("idle")) 
+                animPlay(characters[charSelected], "idle");
+
+            if (justPressed.J || justPressed.L || justPressed.I || justPressed.K) 
+                animPlay(characters[charSelected], curCharList[animSelected], true);
+
+            if (justPressed.J) characters[charSelected].animOffsets[0] += amount;
+            if (justPressed.L) characters[charSelected].animOffsets[0] -= amount;
+            if (justPressed.I) characters[charSelected].animOffsets[1] += amount;
+            if (justPressed.K) characters[charSelected].animOffsets[1] -= amount;
         }
 
-        if ((FlxG.keys.pressed.X || FlxG.keys.pressed.ALT) && FlxG.keys.justPressed.LEFT) characters[charSelected].playAnimation("danceLeft", true);
-        if ((FlxG.keys.pressed.X || FlxG.keys.pressed.ALT) && FlxG.keys.justPressed.RIGHT) characters[charSelected].playAnimation("danceRight", true);
-
-        if (FlxG.keys.justPressed.Z || FlxG.keys.justPressed.SPACE && !A && !S && !Q && !X) {
-            characters[charSelected].playAnimation(curCharAnim[animSelected], true);
-        }
-        if (FlxG.keys.justPressed.X || FlxG.keys.justPressed.ALT && !A && !S && !Q && !X) {
-            characters[charSelected].playAnimation("idle", true);
-        }
-
-        var amount:Int = FlxG.keys.pressed.SHIFT? 10 : FlxG.keys.pressed.CONTROL? 1 : 5;
-
-        if (FlxG.keys.justPressed.J) characters[charSelected].animOffsets[0] += amount;
-        if (FlxG.keys.justPressed.L) characters[charSelected].animOffsets[0] -= amount;
-        if (FlxG.keys.justPressed.I) characters[charSelected].animOffsets[1] += amount;
-        if (FlxG.keys.justPressed.K) characters[charSelected].animOffsets[1] -= amount;
+        if ((pressed.X || pressed.ALT) && justPressed.LEFT && curCharList.contains("danceLeft")) 
+            animPlay(characters[charSelected], "danceLeft");
+        if ((pressed.X || pressed.ALT) && justPressed.RIGHT && curCharList.contains("danceRight")) 
+            animPlay(characters[charSelected], "danceRight");
 
         for (i in 0...onionArray.length) {
             if (FlxG.mouse.wheel != 0 && !(onionArray[i].alpha < 0) && !(onionArray[i].alpha > 1)) onionArray[i].alpha += 0.05 * FlxG.mouse.wheel;
         }
 
-        if (FlxG.keys.pressed.SHIFT && (FlxG.keys.justPressed.Z || FlxG.keys.justPressed.SPACE)) 
+        if (pressed.SHIFT && (justPressed.Z || justPressed.SPACE)) 
             onionSkinUpdate(onionArray[charSelected],characters[charSelected],false);
 
-        if (FlxG.keys.justPressed.ONE) messageToggle = !messageToggle;
+        if (justPressed.ONE) messageToggle = !messageToggle;
         piss.alpha = messageToggle? 1 : 0;
+
+        if (pressed.CONTROL && justPressed.S) saveFile(characters[charSelected]);
+    }
+
+    function buildTxtFile(char:BaseCharacter):String {
+        var output:String = "";
+        for (i in char.animationOffsets.keys()) output += i + " (" + char.animationOffsets.get(i)[0] + ", " + char.animationOffsets.get(i)[1] + ")\n";
+        output += "\nNow input these new values in your character's json!";
+        return output;
+    }
+
+    function saveFile(char:BaseCharacter){
+        var string = buildTxtFile(char);
+        var path;
+
+        for (i in PolymodHandler.getAllMods())
+            if (i.title == "Animation Debug") path = "mods/" + i.id + "/Output";
+
+        if (string != null && string.length > 0)
+        {
+            FileUtil.createDirIfNotExists(path);
+            path += "/" + char.characterId + "Offsets.txt";
+            if (FileUtil.pathExists(path)) FileUtil.deleteFile(path);
+            FileUtil.writeStringToPath(path, string);
+            savedTxt = "SAVED";
+
+            var savedSound = FunkinSound.load(Paths.sound("fav"), 1);
+            savedSound.play();
+            savedSound.onComplete = function() {savedTxt = "";};
+        }
+    }
+
+    function doesContain(one:Array<BaseCharacter>, two:Array<String>, ?string:String = "") {
+        for (i in 0...two.length) {
+            if (one.contains(two[i] + (string != null? string : ""))) return true;
+            else return false;
+        }
     }
 
     override function onNoteGhostMiss(event) {
         super.onNoteGhostMiss(event);
-        if (PlayState.instance == null || freeze == false) return;
-        if (!allowed) return;
+        if (!allowed || !freeze) return;
+
         event.cancel();
         event.stopPropagation();
-        if (FlxG.keys.pressed.A) characters[charSelected].playSingAnimation(event.dir, false);
-        if (FlxG.keys.pressed.S) characters[charSelected].playSingAnimation(event.dir, true);
-        if (FlxG.keys.pressed.Q) characters[charSelected].playSingAnimation(event.dir, false, "alt");
-        characters[charSelected].holdTimer = 0;
+
+        if (pressed.A && doesContain(curCharList, animDefs)) 
+            animPlay(characters[charSelected], animDefs[event.dir]);
+
+        if (pressed.S && doesContain(curCharList, animDefs, "miss") && !pressed.CONTROL) 
+            animPlay(characters[charSelected], animDefs[event.dir] + "miss");
+
+        if (pressed.Q && doesContain(curCharList, animDefs, "-alt")) 
+            animPlay(characters[charSelected], animDefs[event.dir] + "-alt");
     }
 
-    override function onUpdate(elapsed){
-        super.onUpdate(elapsed);
-        if (PlayState.instance == null || PlayState.instance.currentStage == null || pause) return;
+    override function onUpdate(event){
+        super.onUpdate(event);
+        if (!loaded) return;
+
+        pressed = FlxG.keys.pressed;
+        justPressed = FlxG.keys.justPressed;
         
         switch charSelected{
-            case 0: if (bf != null) curCharAnim = bfList;
-            case 1: if (dad != null) curCharAnim = dadList;
-            case 2: if (gf != null) curCharAnim = gfList;
+            case 0: if (bf != null) curCharList = bfList;
+            case 1: if (dad != null) curCharList = dadList;
+            case 2: if (gf != null) curCharList = gfList;
         }
 
-        if (animSelected > (curCharAnim.length - 1)) animSelected = (curCharAnim.length - 1);
+        if (animSelected > (curCharList.length - 1)) animSelected = (curCharList.length - 1);
         if (animSelected < 0) animSelected = 0;
 
-        var animArrays:String = curCharAnim[animSelected] + " - " + animSelected + " / " + (curCharAnim.length - 1);
-        var animoffsets:String = "X: " + characters[charSelected].animOffsets[0] + " - Y: " + characters[charSelected].animOffsets[1];
-        //var animoffsets:String = onionArray[charSelected].origin + " " + characters[charSelected].origin;
+        var animArrays:String = curCharList[animSelected] + " - " + animSelected + " / " + (curCharList.length - 1);
 
-        shit.text = "Target: " + characters[charSelected].characterName + " | " + animoffsets + " | " + animArrays;
+        var animoffsets:String = "X: " + characters[charSelected].animationOffsets.get(curCharList[animSelected])[0] 
+        + " - Y: " + characters[charSelected].animationOffsets.get(curCharList[animSelected])[1];
+
+        shit.text = "Target: " + characters[charSelected].characterName + " | " + animoffsets + " | " + animArrays + "\n" + savedTxt;
         shit.screenCenter(0x01);
-
-        var camHUD:Array<String> = 
-        [
-            PlayState.instance.healthBar,
-            PlayState.instance.healthBarBG,
-            PlayState.instance.iconP1,
-            PlayState.instance.iconP2,
-            PlayState.instance.scoreText,
-            PlayState.instance.opponentStrumline
-        ];
 
         shit.visible = piss.visible = freeze;
         for (i in 0...camHUD.length) camHUD[i].visible = !freeze;
         for (i in 0...onionArray.length) onionArray[i].visible = freeze;
 
-        if ((freeze && (FlxG.keys.pressed.A || FlxG.keys.pressed.S || FlxG.keys.pressed.Q)) || !freeze) PlayState.instance.playerStrumline.visible = true;
+        if ((freeze && (pressed.A && doesContain(curCharList, animDefs))|| (pressed.S && doesContain(curCharList, animDefs, "miss") && !pressed.CONTROL) || 
+            (pressed.Q && doesContain(curCharList, animDefs, "-alt"))) || !freeze) PlayState.instance.playerStrumline.visible = true;
         else if (freeze) PlayState.instance.playerStrumline.visible = false;
+
+        for (note in PlayState.instance.playerStrumline.notes.members) {
+            if (note == null || !note.alive) continue;
+            note.visible = !freeze;
+            note.mayHit = !freeze;
+        }
+        
+        for (note in PlayState.instance.playerStrumline.holdNotes.members) {
+            if (note == null || !note.alive) continue;
+            note.visible = !freeze;
+        }
 
         selecting();
 
@@ -287,15 +368,26 @@ class AnimationDebugModule extends Module
         allowed = true;
     }
 
+    override function onPause(event){
+        super.onPause(event);
+        if (freeze) event.cancel();
+        pause = !freeze;
+    }
+    
     override function onResume(){
         super.onResume();
-        freeze = false;
         pause = false;
     }
 
-    override function onPause(){
-        super.onPause();
-        freeze = false;
-        pause = true;
+    function cleanup() {
+        if (shit != null) {shit.destroy(); shit = null;}
+        if (piss != null) {piss.destroy(); piss = null;}
+
+        for (i in 0...onionArray.length) {
+            if (onionArray[i] != null) {onionArray[i].destroy(); onionArray[i] = null;}
+        }
+
+        loaded = false;
     }
+
 }
