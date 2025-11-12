@@ -1,9 +1,16 @@
 {
   "title": "Animation Debug",
-  "description": "yeahhhhhhhhhhhhhhhhhhhhh",
+  "description": "A module that is meant to test out animations in-game",
   "contributors": [
     {
-      "name": "stryk"
+      "name": "StrYk",
+      "role": "I made this mod.",
+      "url": "https://x.com/StrYk85"
+    },
+    {
+      "name": "ChazbillYT",
+      "role": "Gave suggestions to make the mod better and also being a humble playtester. Love you, muah.",
+      "url": "https://modrinth.com/mod/so-tuff"
     }
   ],
   "api_version": "0.7.5",
