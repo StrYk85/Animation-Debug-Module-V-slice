@@ -4,6 +4,7 @@ import flixel.util.FlxStringUtil;
 import flixel.math.FlxPoint;
 import flixel.text.FlxText;
 import flixel.text.FlxTextBorderStyle;
+import flixel.math.FlxMath;
 import funkin.Conductor;
 import funkin.Paths;
 import funkin.play.PlayState;
@@ -25,8 +26,8 @@ class AnimationDebugModule extends Module
     var animSelected:Int = 0;
     var charSelected:Int = 0;
     var freeze:Bool = false; 
-    var pause:Bool = false;
     var allowed:Bool = false;
+    var loaded:Bool = false;
 
     var bf:BaseCharacter;
     var dad:BaseCharacter;
@@ -63,10 +64,7 @@ class AnimationDebugModule extends Module
     var pressed;
     var justPressed;
 
-    var loaded:Bool = false;
     var messageToggle:Bool = true;
-
-    var camHUD:Array<String> = [];
     var savedTxt:String;
 
     override function onStateChangeBegin(event) {
@@ -104,7 +102,6 @@ class AnimationDebugModule extends Module
 
         allowed = false;
         freeze = false;
-        pause = false;
 
         if (bf != null){
             bfList = bf.animation.getNameList();
@@ -132,15 +129,6 @@ class AnimationDebugModule extends Module
             onionArray[i].zIndex = characters[i].zIndex - 1;
         }
 
-        camHUD = [
-            PlayState.instance.healthBar,
-            PlayState.instance.healthBarBG,
-            PlayState.instance.scoreText,
-            PlayState.instance.iconP1,
-            PlayState.instance.iconP2,
-            PlayState.instance.opponentStrumline,
-        ];
-
         PlayState.instance.currentStage.refresh();
         savedTxt = "";
 
@@ -152,12 +140,13 @@ class AnimationDebugModule extends Module
         onionSkin.loadGraphicFromSprite(char);
         onionSkin.frame = char.frame;
         onionSkin.flipX = char.flipX;
+        onionSkin.flipY = char.flipY;
         onionSkin.scale = char.scale;
         onionSkin.angle = char.angle;
         onionSkin.updateHitbox();
 
-        onionSkin.x = char.x + char.origin.x * (char.scale.x - 1) + char.globalOffsets[0];
-        onionSkin.y = char.y + char.origin.y * (char.scale.y - 1) + char.globalOffsets[1];
+        onionSkin.x = char.cornerPosition.x + char.origin.x * (char.scale.x - 1) + char.globalOffsets[0] * char.scale.x;
+        onionSkin.y = char.cornerPosition.y + char.origin.y * (char.scale.y - 1) + char.globalOffsets[1] * char.scale.y;
 
         onionSkin.offset.x = char.animOffsets[0];
         onionSkin.offset.y = char.animOffsets[1];
@@ -171,11 +160,11 @@ class AnimationDebugModule extends Module
     function animPlay(char:BaseCharacter, anim:String){
         char.playAnimation(anim, true);
         char.holdTimer = 0;
-        animSelected = curCharList.indexOf(anim);
+        if (anim != "idle") animSelected = curCharList.indexOf(anim);
     }
 
     function selecting(){
-        if ((justPressed.C || justPressed.TAB) && allowed && !pause) {
+        if ((justPressed.C || justPressed.TAB) && allowed && !PlayState.instance.isGamePaused) {
             freeze = !freeze;
             freezed(freeze);
         }
@@ -229,7 +218,7 @@ class AnimationDebugModule extends Module
             if (FlxG.mouse.wheel != 0 && !(onionArray[i].alpha < 0) && !(onionArray[i].alpha > 1)) onionArray[i].alpha += 0.05 * FlxG.mouse.wheel;
         }
 
-        if (pressed.SHIFT && (justPressed.Z || justPressed.SPACE)) 
+        if (pressed.SHIFT && ((justPressed.Z || justPressed.SPACE) || (justPressed.X || justPressed.ALT))) 
             onionSkinUpdate(onionArray[charSelected],characters[charSelected],false);
 
         if (justPressed.ONE) messageToggle = !messageToggle;
@@ -315,23 +304,14 @@ class AnimationDebugModule extends Module
         shit.screenCenter(0x01);
 
         shit.visible = piss.visible = freeze;
-        for (i in 0...camHUD.length) camHUD[i].visible = !freeze;
+        PlayState.instance.camHUD.visible = !freeze;
         for (i in 0...onionArray.length) onionArray[i].visible = freeze;
+
+        PlayState.instance.playerStrumline.strumlineNotes.cameras = [freeze? PlayState.instance.camCutscene: PlayState.instance.camHUD];
 
         if ((freeze && (pressed.A && doesContain(curCharList, animDefs))|| (pressed.S && doesContain(curCharList, animDefs, "miss") && !pressed.CONTROL) || 
             (pressed.Q && doesContain(curCharList, animDefs, "-alt"))) || !freeze) PlayState.instance.playerStrumline.visible = true;
         else if (freeze) PlayState.instance.playerStrumline.visible = false;
-
-        for (note in PlayState.instance.playerStrumline.notes.members) {
-            if (note == null || !note.alive) continue;
-            note.visible = !freeze;
-            note.mayHit = !freeze;
-        }
-        
-        for (note in PlayState.instance.playerStrumline.holdNotes.members) {
-            if (note == null || !note.alive) continue;
-            note.visible = !freeze;
-        }
 
         selecting();
 
@@ -368,15 +348,19 @@ class AnimationDebugModule extends Module
         allowed = true;
     }
 
+    override function onCountdownEnd(){
+        super.onCountdownEnd();
+        allowed = true;
+    }
+
+    override function onSongEnd(){
+        super.onSongEnd();
+        allowed = false;
+    }
+
     override function onPause(event){
         super.onPause(event);
         if (freeze) event.cancel();
-        pause = !freeze;
-    }
-    
-    override function onResume(){
-        super.onResume();
-        pause = false;
     }
 
     function cleanup() {
